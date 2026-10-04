@@ -1,0 +1,28 @@
+# ---- 基础框架 ----
+fastapi>=0.115.0,<1.0
+uvicorn[standard]>=0.30.0,<1.0
+
+# ---- 数据层 ----
+sqlalchemy[asyncio]>=2.0,<3.0
+asyncmy>=0.2.9,<1.0
+alembic>=1.13.0,<2.0
+
+# ---- 校验 ----
+pydantic>=2.0,<3.0
+pydantic-settings>=2.0,<3.0
+# ---- 缓存 ----
+redis>=5.2
+
+# ---- 消息队列 ----
+aio-pika>=9.5,<10.0
+
+# ---- 对象存储 ----
+minio>=7.2,<8.0
+
+# ---- 认证 ----
+PyJWT>2.10,<3.0
+bcrypt>=4.2,<5.0
+
+# ---- HTTP/表单 ----
+httpx>=0.28,<1.0
+python-multipart>=0.0.20
