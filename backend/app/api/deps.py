@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -24,6 +24,7 @@ oauth2_scheme = OAuth2PasswordBearer(
 
 
 async def get_current_user(
+        request: Request,
         token: str = Depends(oauth2_scheme),
         db: AsyncSession = Depends(get_db)
 ) -> User:
@@ -39,6 +40,8 @@ async def get_current_user(
     user = await UserRepository(db).get(int(payload["sub"]))
     if user is None or user.status != UserStatus.ACTIVE:
         raise UnauthorizedError("用户不存在或已被禁用")
+    # 写入请求上下文，供 RequestLogMiddleware 记录 user=
+    request.state.user_id = user.id
     return user
 
 

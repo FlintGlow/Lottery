@@ -4,10 +4,7 @@ venv/
 __pycache__/
 *.py[cod]
 *.egg-info/
-.env
 test_main.http
-backend/docx
-backend/images
 
 # ========== 前端 ==========
 node_modules/
@@ -24,15 +21,13 @@ build/
 .DS_Store
 Thumbs.db
 
-# ========== AI / dsh 临时脚本 ==========
-_doc_*.py
-_docx_*.py
-_gendoc*.py
-tmp/
-.ai_tmp/
-*.tmp
 
 # ========== 本地工具 / 系统 ==========
-.acl-recovery/
 *.log
 logs/
+
+# ---- 本地配置：含明文密钥，绝不进镜像 ----
+.env
+.env.local
+**/.env
+**/.env.local

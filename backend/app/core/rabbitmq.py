@@ -15,7 +15,7 @@ async def get_rabbitmq() -> AbstractRobustConnection:
     """获取 RabbitMQ 连接（懒加载单例，断线自动重连）。"""
     global _connection
     if _connection is None or _connection.is_closed:
-        _connection = await aio_pika.connect_robust(settings.RABBITMQ_URL, reconnect_interval=2)
+        _connection = await connect_robust(settings.RABBITMQ_URL, reconnect_interval=2)
     return _connection
 
 
@@ -30,7 +30,7 @@ async def close_rabbitmq() -> None:
 async def publish_message(exchange_name: str,routing_key: str, payload:dict) -> None:
     """发布持久化消息（publisher confirm），发布前确保拓扑就绪。"""
     connection = await get_rabbitmq()
-    channel: AbstractRobustChannel = await connection.channel(publisher_confirm=True)
+    channel: AbstractRobustChannel = await connection.channel(publisher_confirms=True)
     try:
         await ensure_topology(channel)
         exchange = await channel.get_exchange(exchange_name)

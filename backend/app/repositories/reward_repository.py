@@ -75,7 +75,7 @@ class ManualRewardRepository(BaseRepository[ManualReward]):
                 .select_from(ManualReward)
                 .join(User, User.id == ManualReward.user_id)
                 .join(Prize, Prize.id == ManualReward.prize_id)
-                .outerjoin(operator_user, operator_user.id == ManualReward.user_id)
+                .outerjoin(operator_user, operator_user.id == ManualReward.operator_id)
                 .where(*conditions)
             )
 

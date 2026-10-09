@@ -36,6 +36,7 @@ class Prize(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
         CheckConstraint("total_stock >= 0", name="ck_prizes_total_stock"),
         CheckConstraint("remain_stock >= 0", name="ck_prizes_remain_stock"),
         CheckConstraint("weight >= 0", name="ck_prizes_weight"),
+        CheckConstraint("daily_limit >= 0", name="ck_prizes_daily_limit"),
     )
 
     activity_id: Mapped[int] = mapped_column(
@@ -44,9 +45,11 @@ class Prize(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
         nullable=False,
         comment="活动ID"
     )
-    category_id: Mapped[int] = mapped_column(
+    # Schema 允许不分类（PrizeCreate.category_id 可为空），此处与之一致
+    category_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("prize_categories.id", ondelete="RESTRICT"),
+        nullable=True,
         comment="分类ID"
     )
     prize_type: Mapped[PrizeType] = mapped_column(
@@ -61,6 +64,12 @@ class Prize(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     total_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="总库存量")
     remain_stock: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="剩余库存量")
     weight: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="中奖权重(0=不参与)")
+    daily_limit: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        nullable=False,
+        comment="每日中出上限(0=不限)，仅管理端可配置与查看",
+    )
     img_url: Mapped[str | None] = mapped_column(String(255), comment="奖品图片")
     status: Mapped[PrizeStatus] = mapped_column(
         enum_column(PrizeStatus, "prize_status"),

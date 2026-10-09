@@ -17,13 +17,12 @@ BCRYPT_ROUNDS = 12
 MAX_PASSWORD_BYTES = 72
 
 def hash_password(password: str) -> str:
-
+    """BCrypt 哈希密码（bcrypt 只处理前 72 字节，超出时显式拒绝）。"""
     raw = password.encode("utf-8")
     if len(raw) > MAX_PASSWORD_BYTES:
         raise BadRequestError(
             f"密码过长：UTF-8编码后不得超过{MAX_PASSWORD_BYTES} 字节"
         )
-    """BCrypt 哈希密码。"""
     return bcrypt.hashpw(
         raw,
         bcrypt.gensalt(rounds=BCRYPT_ROUNDS),

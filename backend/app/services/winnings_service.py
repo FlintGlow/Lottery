@@ -130,6 +130,8 @@ class WinningsService:
             prize_image = win.prize_image,
             prize_type = win.prize_type,
             redemption_status = win.redemption_status,
+            redemption_code = win.redemption_code,
+            expire_at = win.expire_at,
             recipient_name = win.recipient_name,
             recipient_phone = win.recipient_phone,
             recipient_address = win.recipient_address,

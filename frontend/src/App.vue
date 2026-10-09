@@ -1,47 +1,55 @@
 <script setup>
-import HelloWorld from './components/HelloWorld.vue'
-import TheWelcome from './components/TheWelcome.vue'
+import { computed, onMounted } from 'vue'
+import AppHeader from '@/components/AppHeader.vue'
+import AppFooter from '@/components/AppFooter.vue'
+import ToastHost from '@/components/ToastHost.vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import AdminLayout from '@/views/admin/AdminLayout.vue'
+import RouteLoading from '@/components/RouteLoading.vue'
+import { useRoute } from '@/router'
+import { useAuthStore } from '@/stores/auth'
+
+const route = useRoute()
+const auth = useAuthStore()
+
+const view = computed(() => route.matched?.component)
+const bare = computed(() => Boolean(route.meta?.bare))
+const isAdminArea = computed(() => route.meta?.layout === 'admin')
+
+onMounted(() => {
+  auth.ensureLoaded()
+})
 </script>
 
 <template>
-  <header>
-    <img alt="Vue logo" class="logo" src="./assets/logo.svg" width="125" height="125" />
+  <div class="app-shell">
+    <AppHeader v-if="!bare" />
 
-    <div class="wrapper">
-      <HelloWorld msg="You did it!" />
-    </div>
-  </header>
+    <main class="app-main">
+      <!-- 首次进入时守卫可能还在等待 /users/me，此时先显示占位 -->
+      <RouteLoading v-if="!view" />
+      <Transition v-else name="view" mode="out-in">
+        <AdminLayout v-if="isAdminArea" :key="`admin-${route.name}`">
+          <component :is="view" :key="route.fullPath" />
+        </AdminLayout>
+        <component :is="view" v-else :key="route.fullPath" />
+      </Transition>
+    </main>
 
-  <main>
-    <TheWelcome />
-  </main>
+    <AppFooter v-if="!bare" />
+    <ToastHost />
+    <ConfirmDialog />
+  </div>
 </template>
 
 <style scoped>
-header {
-  line-height: 1.5;
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
 }
-
-.logo {
-  display: block;
-  margin: 0 auto 2rem;
-}
-
-@media (min-width: 1024px) {
-  header {
-    display: flex;
-    place-items: center;
-    padding-right: calc(var(--section-gap) / 2);
-  }
-
-  .logo {
-    margin: 0 2rem 0 0;
-  }
-
-  header .wrapper {
-    display: flex;
-    place-items: flex-start;
-    flex-wrap: wrap;
-  }
+.app-main {
+  flex: 1;
+  min-width: 0;
 }
 </style>

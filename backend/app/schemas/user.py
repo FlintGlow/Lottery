@@ -29,7 +29,7 @@ class UserResponse(BaseModel):
     phone_number: str | None
     avatar_url: str | None
     status: UserStatus
-    last_login: datetime | None
+    last_login: datetime | None = Field(validation_alias="last_login_at")
     created_at: datetime
     roles: list[RoleResponse] = []
 

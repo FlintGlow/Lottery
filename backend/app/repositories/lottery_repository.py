@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import func, select
 
 from app.models.enums import DrawStatus
@@ -76,6 +78,26 @@ class LotteryRepository(BaseRepository[DrawRecord]):
                 DrawRecord.activity_id == activity_id,
                 DrawRecord.prize_id == prize_id,
                 DrawRecord.status == DrawStatus.WON,
+                DrawRecord.is_deleted.is_(False),
+            )
+        )
+        return (await self.session.execute(stmt)).scalar_one()
+
+    async def count_won_by_prize_since(
+            self,
+            activity_id: int,
+            prize_id: int,
+            since: datetime,
+    ) -> int:
+        """统计 since 之后该奖品的中出次数（用于 prizes.daily_limit）。"""
+        stmt = (
+            select(func.count())
+            .select_from(DrawRecord)
+            .where(
+                DrawRecord.activity_id == activity_id,
+                DrawRecord.prize_id == prize_id,
+                DrawRecord.status == DrawStatus.WON,
+                DrawRecord.created_at >= since,
                 DrawRecord.is_deleted.is_(False),
             )
         )

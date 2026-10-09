@@ -130,7 +130,7 @@ async def create_category(
         request: Request,
         current_user: User = Depends(require_roles("admin", "operator")),
         db: AsyncSession = Depends(get_db),
-) -> ApiResponse[list[PrizeCategoryResponse]]:
+) -> ApiResponse[PrizeCategoryResponse]:
     """创建奖品分类"""
     category = await PrizeService(db).create_category(current_user, data, ip=_client_ip(request))
     return ok(category, "分类已创建")
@@ -143,7 +143,7 @@ async def update_category(
         request: Request,
         current_user: User = Depends(require_roles("admin", "operator")),
         db: AsyncSession = Depends(get_db),
-) -> ApiResponse[list[PrizeCategoryResponse]]:
+) -> ApiResponse[PrizeCategoryResponse]:
     """更新奖品分类"""
     category = await PrizeService(db).update_category(
         current_user, category_id, data, ip=_client_ip(request)

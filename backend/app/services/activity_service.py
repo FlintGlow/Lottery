@@ -241,11 +241,11 @@ class ActivityService:
     # --- 内部方法 ---
     async def _refresh_status(self, activity: Activity) -> None:
         now = datetime.now()
-        if(
-            activity.status == ActivityStatus.PENDING and
-            activity.start_time and activity.start_time <= now
+        if (
+            activity.status == ActivityStatus.PENDING
+            and activity.start_time
+            and activity.start_time <= now
         ):
-            change = True
             activity.status = ActivityStatus.ONGOING
 
 

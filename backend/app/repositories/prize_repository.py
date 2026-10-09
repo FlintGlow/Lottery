@@ -16,12 +16,20 @@ class PrizeCategoryRepository(BaseRepository[PrizeCategory]):
         return await self.get_by(name=name)
 
     async def list_categories(self) -> list[PrizeCategory]:
-        items, _ = await self.list(
-            page =1,
-            page_size = 100,
-            order_by = PrizeCategory.sort_order,
-            descending = False,
-        )
+        """返回全部分类：分页拉取，避免超过 100 条时被静默截断。"""
+        items: list[PrizeCategory] = []
+        page = 1
+        while True:
+            batch, _ = await self.list(
+                page=page,
+                page_size=200,
+                order_by=PrizeCategory.sort_order,
+                descending=False,
+            )
+            items.extend(batch)
+            if len(batch) < 200:
+                break
+            page += 1
         return items
 
     async def count_prizes(self, category_id: int) -> int:
@@ -118,6 +126,23 @@ class PrizeRepository(BaseRepository[Prize]):
                 Prize.is_deleted.is_(False),
             )
             .values(remain_stock = Prize.remain_stock - 1)
+        )
+        result = await self.session.execute(stmt)
+        return result.rowcount == 1
+
+    async def increment_remain_stock(self, prize_id: int) -> bool:
+        """回补剩余库存，与 decrement_remain_stock 配对使用。
+
+        用于「已扣减数据库库存、但结算阶段决定放弃本次中奖」的场景
+        （例如奖品已达每日中出上限）。
+        """
+        stmt = (
+            update(Prize)
+            .where(
+                Prize.id == prize_id,
+                Prize.is_deleted.is_(False),
+            )
+            .values(remain_stock = Prize.remain_stock + 1)
         )
         result = await self.session.execute(stmt)
         return result.rowcount == 1

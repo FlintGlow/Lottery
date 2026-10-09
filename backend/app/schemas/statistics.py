@@ -17,6 +17,7 @@ class PrizeStatResponse(BaseModel):
 class ActivityStaticsResponse(BaseModel):
     activity_id: int
     activity_name: str
+    created_by_name: str | None = None
     participant_count: int
     draw_count: int
     win_count: int

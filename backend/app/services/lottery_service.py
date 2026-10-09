@@ -7,11 +7,10 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from app.core.exceptions import BadRequestError, NotFoundError, ConflictError, TooManyRequestsError
+from app.core.exceptions import BadRequestError, NotFoundError, TooManyRequestsError
 from app.core.rabbitmq import publish_message
 from app.core.redis import get_redis
 from app.models.enums import ActivityStatus, OutboxStatus
@@ -20,7 +19,6 @@ from app.models.participation import ActivityParticipation
 from app.models.user import User
 from app.repositories.lottery_repository import LotteryRepository
 from app.repositories.message_outbox_repository import MessageOutboxRepository
-from app.repositories.participation_repository import ParticipationRepository
 from app.schemas.lottery import DrawResultOut, LotteryRecordResponse
 from app.services.activity_service import ActivityService
 from app.services.lottery_cache import LotteryCacheService
@@ -31,7 +29,7 @@ settings = get_settings()
 DEFAULT_NONE_WEIGHT = 1000   # 未中奖区间权重（可被活动 rule_config.none_weight 覆盖）
 DRAW_LOCK_TTL = 5            # 防重锁 TTL（秒）
 DAILY_KEY_TTL = 86400        # 每日限次计数 TTL（秒）
-PARTICIPATE_LOCK_TTL = 5     #参与资格锁TTL（秒）
+TOTAL_KEY_TTL = 90 * 86400   # 活动总次数计数 TTL（秒），足够覆盖活动周期
 
 
 class LotteryService:
@@ -43,7 +41,6 @@ class LotteryService:
         self.cache = LotteryCacheService(db)
         self.records = LotteryRepository(db)
         self.outbox = MessageOutboxRepository(db)
-        self.participation = ParticipationRepository(db)
 
     async def draw(self, user: User, activity_id: int, ip: str | None = None) -> DrawResultOut:
         """执行一次抽奖：预扣库存 → 投递消息 → 返回处理中。"""
@@ -136,26 +133,35 @@ class LotteryService:
     # ---- 内部方法 ----
 
     async def _check_limit(self, redis, activity, user: User) -> None:
+        """活动总次数与每人每日次数校验。
+
+        先做只读预检、再统一计数：避免「总次数先自增、随后被每日限次拒绝」
+        这种被拒绝的请求也占用活动总次数额度的情况。
+        """
         today = datetime.now().strftime("%Y%m%d")
+        daily_key = f"lottery:user:today:{activity.id}:{user.id}:{today}"
+        total_key = f"lottery:total:{activity.id}"
 
-        #先检查活动总抽奖次数上限
+        # 1) 只读预检，不写计数
+        if activity.daily_draw_limit > 0:
+            if int(await redis.get(daily_key) or 0) >= activity.daily_draw_limit:
+                raise TooManyRequestsError(
+                    f"今日抽奖已达上限（{activity.daily_draw_limit}次）"
+                )
         if activity.total_draw_limit > 0:
-            key = f"lottery:total:{activity.id}"
-            if await redis.incr(key) > activity.total_draw_limit:
-                await redis.decr(key)
-                raise TooManyRequestsError(f"活动抽奖总次数已达上限({activity.total_draw_limit}次)")
+            if int(await redis.get(total_key) or 0) >= activity.total_draw_limit:
+                raise TooManyRequestsError(
+                    f"活动抽奖总次数已达上限({activity.total_draw_limit}次)"
+                )
 
-        #检查当日抽奖次数（如果活动设置的每天抽奖次数 <= 0 时 直接返回， 否则设置锁记录抽奖次数和过期时间，当抽奖次数大于设置的每日抽奖次数返回已达上限）
-
-        limit = activity.daily_draw_limit
-        if limit <= 0:
-            return
-        key = f"lottery:user:today:{activity.id}:{user.id}:{today}"
-        count = await redis.incr(key)
-        if count == 1:
-            await redis.expire(key, DAILY_KEY_TTL)
-        if count > limit:
-            raise TooManyRequestsError(f"今日抽奖已达上限（{limit}次）")
+        # 2) 预检通过后再计数
+        if activity.daily_draw_limit > 0:
+            count = await redis.incr(daily_key)
+            if count == 1:
+                await redis.expire(daily_key, DAILY_KEY_TTL)
+        if activity.total_draw_limit > 0:
+            await redis.incr(total_key)
+            await redis.expire(total_key, TOTAL_KEY_TTL)
 
 
     def _none_weight(self, activity) -> int:
@@ -190,7 +196,11 @@ class LotteryService:
             payload: dict,
             participation: ActivityParticipation,
     ) -> None:
-        """参与记录 + 发件箱在同一事务提交；唯一约束冲突视为重复参与。"""
+        """参与记录 + 发件箱在同一事务提交。
+
+        参与记录仅用于活动统计（参与人数/明细），不承担参与资格校验，
+        因此这里不做「同一手机号同一活动只能参与一次」的判断。
+        """
         outbox = MessageOutbox(
             biz_type = "draw_result",
             biz_id = payload["order_no"],

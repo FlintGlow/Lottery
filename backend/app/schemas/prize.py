@@ -45,7 +45,10 @@ class PrizeCreate(BaseModel):
     description: str | None = Field(default=None, max_length=2000, description="奖品描述")
     total_stock: int = Field(default=0, ge=0, description="总库存")
     weight: int = Field(default=0, ge=0, description="中奖权重(0=不参与)")
-    img_url: str | None = Field(default= None, max_length=512,description="奖品图片")
+    daily_limit: int = Field(
+        default=0, ge=0, description="每日中出上限(0=不限)，仅管理端与运营可见"
+    )
+    img_url: str | None = Field(default=None, max_length=255, description="奖品图片URL")
     sort_order: int = Field(default=0, ge=0)
 
 
@@ -54,9 +57,10 @@ class PrizeUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=128)
     description: str | None = Field(default=None, max_length=2000)
     prize_type: PrizeType | None = Field(default=None)
-    prize_level: str | None = Field(default=None)
+    prize_level: str | None = Field(default=None, max_length=32)
     weight: int | None = Field(default=None, ge=0)
-    img_url: str | None = Field(default=None, max_length=500)
+    daily_limit: int | None = Field(default=None, ge=0, description="每日中出上限(0=不限)")
+    img_url: str | None = Field(default=None, max_length=255)
     sort_order: int | None = Field(default=None, ge=0)
     status: PrizeStatus | None = Field(default=None)
 
@@ -74,7 +78,9 @@ class PrizesResponse(BaseModel):
     id: int
     activity_id: int
     category_id: int | None
-    category_name: str | None
+    # 由 Service 在 model_validate 之后填充（Prize 实体本身没有该属性），
+    # 因此必须给默认值，否则 model_validate 会直接抛 ValidationError。
+    category_name: str | None = None
     name: str
     description: str | None
     prize_type: PrizeType
@@ -82,6 +88,7 @@ class PrizesResponse(BaseModel):
     total_stock: int
     remain_stock: int
     weight: int
+    daily_limit: int = Field(description="每日中出上限(0=不限)，仅管理端与运营可见")
     img_url: str | None
     sort_order: int
     version: int
@@ -91,6 +98,12 @@ class PrizesResponse(BaseModel):
 
 
 class PrizePublishResponse(BaseModel):
+    """用户端可见的奖品信息。
+
+    刻意不包含 weight / total_stock / daily_limit / version 等运营参数：
+    每日中出上限属于运营配置，只对管理端与运营人员可见。
+    """
+
     model_config = ConfigDict(
         from_attributes=True,
     )

@@ -24,6 +24,15 @@ class ClaimService:
         win = await self.winnings.get(win_id)
         if win is None or win.user_id != user.id:
             raise NotFoundError("中奖记录不存在")
+
+        # 领取有效期：expire_at 在中奖落库时写入（默认 30 天）
+        if win.expire_at is not None and datetime.now() > win.expire_at:
+            raise BadRequestError("领奖已过期，无法提交")
+
+        # 兑换码：中奖记录上生成，提交时核对
+        if win.redemption_code and data.redemption_code != win.redemption_code:
+            raise BadRequestError("兑换码不正确")
+
         if win.redemption_status != RedemptionStatus.PENDING:
             raise BadRequestError("领奖信息已提交或该记录不可重复提交")
 

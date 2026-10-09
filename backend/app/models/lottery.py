@@ -62,11 +62,11 @@ class WinRecord(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
         Index("ix_win_records_activity_prize", "activity_id", "prize_id"),
     )
 
-    draw_record_id: Mapped[int] = mapped_column(
+    draw_record_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("draw_records.id",ondelete="RESTRICT"),
-        nullable=False,
-        comment="抽奖记录ID",
+        nullable=True,
+        comment="抽奖记录ID；人工补发生成的中奖记录没有对应抽奖记录，此处为空",
     )
     user_id: Mapped[int] = mapped_column(
         BigInteger,

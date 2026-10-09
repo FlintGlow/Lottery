@@ -1,0 +1,43 @@
+# Docker 构建上下文排除清单
+#
+# 【这个文件为什么在仓库根目录】Docker 只认「构建上下文根目录下的 .dockerignore」，
+# 而本项目的 compose 把构建上下文设成了仓库根（原因见 docx/docker/docker-compose.yml 顶部注释）。
+# 没有它，node_modules 与 .venv 会被打进上下文，每次构建要多传几百 MB。
+
+# ---- Python ----
+**/.venv/
+**/venv/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/*.egg-info/
+
+# ---- Node ----
+**/node_modules/
+**/dist/
+**/dist-ssr/
+**/.vite/
+
+# ---- 版本控制与 IDE ----
+.git/
+.gitignore
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# ---- 日志与临时文件 ----
+*.log
+logs/
+tmp/
+.ai_tmp/
+.acl-recovery/
+
+# ---- 文档生成器（构建不需要，几十个脚本）----
+backend/docx/_generator/
+
+# ---- 本地配置：含明文密钥，绝不进镜像 ----
+.env
+.env.local
+**/.env
+**/.env.local

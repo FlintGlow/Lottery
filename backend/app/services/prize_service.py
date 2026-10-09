@@ -151,6 +151,7 @@ class PrizeService:
             total_stock = data.total_stock,
             remain_stock = data.total_stock,
             weight = data.weight,
+            daily_limit = data.daily_limit,
             sort_order = data.sort_order,
         )
         prize = await self.prizes.add(prize)
@@ -223,14 +224,21 @@ class PrizeService:
     # ---- 用户端 ----
 
     async def list_activity_prizes(self, activity_id: int) -> list[Prize]:
-        """用户端奖品列表： 仅展示已发布活动中启用奖品"""
+        """用户端奖品列表： 仅展示已发布活动中启用奖品（分页取全量）"""
         await ActivityService(self.db).get_public(activity_id)
-        items, _ = await self.prizes.list_prizes(
-            activity_id = activity_id,
-            status = PrizeStatus.ENABLED,
-            page = 1,
-            page_size = 100,
-        )
+        items: list[Prize] = []
+        page = 1
+        while True:
+            batch, _ = await self.prizes.list_prizes(
+                activity_id=activity_id,
+                status=PrizeStatus.ENABLED,
+                page=page,
+                page_size=200,
+            )
+            items.extend(batch)
+            if len(batch) < 200:
+                break
+            page += 1
         return items
 
     # ---- 内部方法 ----

@@ -1,6 +1,11 @@
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 示例密钥：非开发环境必须通过环境变量覆盖
+_INSECURE_JWT_DEFAULT = "change-me-in-production-with-random-32-plus-bytes"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -41,7 +46,7 @@ class Settings(BaseSettings):
     MINIO_UPLOAD_MAX_SIZE: int = 5 * 1024 * 1024
 
     # ---- JWT ----
-    JWT_SECRET_KEY: str = "change-me-in-production-with-random-32-plus-bytes"
+    JWT_SECRET_KEY: str = _INSECURE_JWT_DEFAULT
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
@@ -53,8 +58,20 @@ class Settings(BaseSettings):
     # ---- 初始管理员（scripts/seed_admin.py 使用）----
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "admin123456"
-    ADMIN_EMAIL: str | None = "admin@cese.com"
     ADMIN_PHONE: str = "13900000000"
+
+    @model_validator(mode="after")
+    def _reject_insecure_defaults(self):
+        """非开发环境禁止使用示例密钥，避免带着公开可知的密钥上线。"""
+        if self.APP_ENV == "dev":
+            return self
+        if (self.JWT_SECRET_KEY == _INSECURE_JWT_DEFAULT
+                or len(self.JWT_SECRET_KEY) < 32):
+            raise ValueError(
+                "非开发环境必须通过环境变量 JWT_SECRET_KEY "
+                "提供至少 32 字符的随机密钥"
+            )
+        return self
 
 
 

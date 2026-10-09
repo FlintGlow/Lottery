@@ -1,8 +1,9 @@
 {
-  "name": "fronted",
-  "version": "0.0.0",
+  "name": "lucky-draw-frontend",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
+  "description": "幸运抽奖系统前端：活动抽奖、中奖领奖与运营管理后台",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

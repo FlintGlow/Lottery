@@ -15,6 +15,7 @@ class RedemptionSubmitRequest(BaseModel):
     recipient_name: str | None = Field(default=None, max_length=64, description="收货姓名")
     recipient_phone: str | None = Field(default=None, pattern=r'^1[3-9]\d{9}$', description="领奖手机号")
     recipient_address: str | None =Field(default=None, max_length=255, description="收货地址")
+    redemption_code: str | None = Field(default=None, max_length=32, description="兑换码（中奖记录上生成）")
 
 class WinRecordResponse(BaseModel):
 
@@ -28,6 +29,8 @@ class WinRecordResponse(BaseModel):
     prize_image: str | None
     prize_type: PrizeType
     redemption_status: RedemptionStatus
+    redemption_code: str | None
+    expire_at: datetime | None
     recipient_name: str |None
     recipient_phone: str | None
     recipient_address: str | None

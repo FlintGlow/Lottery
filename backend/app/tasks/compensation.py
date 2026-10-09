@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 COMPENSATION_INTERVAL_SECONDS = 60
 BATCH_SIZE = 50
 PENDING_TIMEOUT_MINUTES = 5
+MAX_OUTBOX_RETRY = 10          # 发件箱最大重试次数，超过则置为 FAILED 不再重发
 
 async def run_compensation_loop() -> None:
     """周期性执行补偿任务"""
@@ -54,10 +55,17 @@ async def compensate_outbox() -> None:
                 await publish_message(message.exchange, message.routing_key, message.payload)
                 message.status = OutboxStatus.SENT
                 message.last_error = None
-            except Exception:
+            except Exception as exc:
                 message.retry_count += 1
-                message.last_error = str(Exception)[: 255]
-                message.next_retry_at = now + timedelta(seconds=min(2**message.retry_count, 300))
+                # 记录真实的异常类型与内容
+                message.last_error = f"{type(exc).__name__}: {exc}"[:255]
+                if message.retry_count >= MAX_OUTBOX_RETRY:
+                    message.status = OutboxStatus.FAILED
+                    message.next_retry_at = None
+                else:
+                    message.next_retry_at = now + timedelta(
+                        seconds=min(2 ** message.retry_count, 300)
+                    )
         if rows:
             await session.commit()
             logger.info("发件箱补偿完成：处理 %s 条", len(rows))

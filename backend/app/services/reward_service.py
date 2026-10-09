@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+import secrets
+from datetime import datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,8 +23,9 @@ from app.repositories.user_repository import UserRepository
 
 from app.schemas.reward import ManualRewardCreate, ManualRewardResponse, ManualRewardStatusUpdate
 from app.core.exceptions import ConflictError
-from app.models import WinRecord
+from app.models.lottery import WinRecord
 from app.services.lottery_cache import LotteryCacheService
+from app.services.draw_result_service import CLAIM_EXPIRE_DAYS
 
 _ALLOWED_REWARD_TRANSITIONS:dict[ManualRewardStatus, set[ManualRewardStatus]] = {
     ManualRewardStatus.PENDING: {ManualRewardStatus.ISSUED, ManualRewardStatus.CANCELLED},
@@ -43,6 +45,7 @@ class RewardService:
         self.records = LotteryRepository(db)
         self.operation_logs = OperationLogRepository(db)
         self.activities = ActivityRepository(db)
+        self.cache = LotteryCacheService(self.db)
 
     async def create(
             self,
@@ -146,16 +149,29 @@ class RewardService:
                 raise BadRequestError("奖品库存不足，无法发放")
             if not await self.prizes.decrement_remain_stock(reward.prize_id):
                 raise ConflictError("请稍后重试")
-            await LotteryCacheService(self.db).set_stock(reward.prize_id, prize.remain_stock - 1)
+
+            # Redis 侧用原子 DECR 与数据库同向变化；
+            # 不要用内存里早先读到的旧值 set_stock，否则会覆盖并发的抽奖预扣。
+
+            if await self.cache.deduct_stock(reward.prize_id) < 0:
+                # 库存键不存在或已扣到 0：按刚扣减后的数据库值重新同步
+                await self.cache.set_stock(
+                    reward.prize_id, max(prize.remain_stock - 1, 0)
+                )
+
             self.db.add(
                 WinRecord(
-                    draw_record_id = reward.draw_record_id or 0,
+                    # 人工补发没有对应的抽奖记录，此处留空
+                    draw_record_id = reward.draw_record_id,
                     user_id = reward.user_id,
                     activity_id = reward.activity_id,
                     prize_id = reward.prize_id,
                     prize_type = prize.prize_type,
                     prize_name = prize.name,
                     prize_image = prize.img_url,
+                    # 与抽奖落库保持一致：补发同样生成兑换码与领取有效期
+                    redemption_code = secrets.token_hex(6).upper(),
+                    expire_at = datetime.now() + timedelta(days=CLAIM_EXPIRE_DAYS),
                     redemption_status = RedemptionStatus.PENDING,
                 )
             )

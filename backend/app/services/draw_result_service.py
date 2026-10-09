@@ -6,14 +6,14 @@ import secrets
 
 from datetime import datetime, timedelta
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.repositories.lottery_repository import LotteryRepository
 from app.services.lottery_cache import LotteryCacheService
-from app.models.lottery import DrawRecord
+from app.models.lottery import DrawRecord, WinRecord
 from app.models.enums import DrawStatus
-from app.models import WinRecord
 from app.repositories.prize_repository import PrizeRepository
 
 CLAIM_EXPIRE_DAYS = 30
@@ -53,34 +53,40 @@ class DrawResultService:
 
         prize_id = payload.get("prize_id")
         if prize_id is None:
-            record.status = DrawStatus.NO_PRIZE
-            await self.db.flush()
-            await self.db.commit()
-            return True
+            return await self._settle(record, DrawStatus.NO_PRIZE)
+
         prize = await self.prizes.get(prize_id)
         if prize is None:
-            await self.cache.refund_stock(prize_id)
-            record.status = DrawStatus.REFUNDED
-            record.error_message = "奖品不存在， 已回补Redis预扣"
-            await self.db.flush()
-            await self.db.commit()
-            return True
-        #数据库侧原子扣减：仅当 remain_stock > 0 才会成功
+            # 先抢占结算，抢到才回补，避免与补偿任务重复回补
+            return await self._settle_with_refund(
+                record, DrawStatus.REFUNDED, "奖品不存在，已回补Redis预扣", prize_id
+            )
+
+        # 数据库侧原子扣减：仅当 remain_stock > 0 才会成功
         if not await self.prizes.decrement_remain_stock(prize_id):
             # Redis 预扣与 MySQL 库存不一致：回补预扣并标记 REFUNDED
-            await self.cache.refund_stock(prize_id)
-            record.status = DrawStatus.REFUNDED
-            record.error_message = "MySQL库存不足，已回补Redis预扣"
-            await self.db.flush()
-            await self.db.commit()
-            return True
+            return await self._settle_with_refund(
+                record, DrawStatus.REFUNDED, "MySQL库存不足，已回补Redis预扣", prize_id
+            )
 
-        record.status = DrawStatus.WON
-        record.result_json = {
-            **jsonable_encoder(payload),
-            "prize_name": prize.name,
-            "level": prize.prize_level
-        }
+        # 奖品维度的每日中出上限（prizes.daily_limit，0 表示不限）
+        if prize.daily_limit > 0:
+            today_start = datetime.now().replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            won_today = await self.records.count_won_by_prize_since(
+                record.activity_id, prize_id, today_start
+            )
+            if won_today >= prize.daily_limit:
+                # 放弃本次中奖：数据库已扣减、Redis 已预扣，两侧都要回补
+                return await self._settle_with_refund(
+                    record,
+                    DrawStatus.REFUNDED,
+                    "奖品已达每日中出上限，已回补预扣",
+                    prize_id,
+                    restore_db_stock=True,
+                )
+
         self.db.add(
             WinRecord(
                 draw_record_id=record.id,
@@ -94,7 +100,70 @@ class DrawResultService:
                 expire_at=datetime.now() + timedelta(days=CLAIM_EXPIRE_DAYS),
             )
         )
-        await self.db.flush()
+        return await self._settle(
+            record,
+            DrawStatus.WON,
+            result_json={
+                **jsonable_encoder(payload),
+                "prize_name": prize.name,
+                "level": prize.prize_level,
+            },
+        )
+
+    async def _settle_with_refund(
+            self,
+            record: DrawRecord,
+            status: DrawStatus,
+            error_message: str,
+            prize_id: int,
+            restore_db_stock: bool = False,
+    ) -> bool:
+        """先抢占结算、成功后再回补库存。
+
+        顺序很关键：若先回补再结算，一旦结算因竞态失败（rowcount != 1），
+        补偿任务也会回补一次，Redis 计数就会被多补一份。
+        """
+        settled = await self._settle(record, status, error_message)
+        if not settled:
+            return False
+        if restore_db_stock:
+            await self.prizes.increment_remain_stock(prize_id)
+        await self.cache.refund_stock(prize_id)
+        await self.db.commit()
+        return True
+
+    async def _settle(
+            self,
+            record: DrawRecord,
+            status: DrawStatus,
+            error_message: str | None = None,
+            result_json: dict | None = None,
+    ) -> bool:
+        """以 status == PENDING 为条件抢占式结算。
+
+        tasks/compensation.py 会把超时仍为 PENDING 的记录置为 FAILED 并回补 Redis
+        库存；这里同样以 status == PENDING 为条件更新，保证两边只有一方生效，
+        避免出现「库存已回补 + 中奖记录已生成」的重复发放。
+        """
+        values: dict = {"status": status}
+        if error_message is not None:
+            values["error_message"] = error_message
+        if result_json is not None:
+            values["result_json"] = result_json
+
+        claim = await self.db.execute(
+            update(DrawRecord)
+            .where(
+                DrawRecord.id == record.id,
+                DrawRecord.status == DrawStatus.PENDING,
+            )
+            .values(**values)
+        )
+        if claim.rowcount != 1:
+            # 已被补偿任务抢先判定失败：本次不再结算，也不重复回补库存
+            await self.db.rollback()
+            return False
+
         await self.db.commit()
         return True
 

@@ -56,8 +56,8 @@ async def main() -> None:
             )
             await db.commit()
 
-        await engine.dispose()
-        print("初始化已完成: 建表+角色+管理员")
+    await engine.dispose()
+    print("初始化已完成: 建表+角色+管理员")
 
 
 if __name__ == "__main__":

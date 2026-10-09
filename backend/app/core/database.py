@@ -77,7 +77,7 @@ class SoftDeleteMixin:
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """ FastAPI依赖： 提供请求级会话，事务由Service层显示提交。
 
-        先提交再响应，避免客户端读到旧状态，保持数据一致性。
+        如果请求过程中发生异常，这里负责回滚。
     """
     async with AsyncSessionLocal() as session:
         try:
