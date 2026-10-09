@@ -96,7 +96,7 @@ services:
       MINIO_SECURE: "false"
       CORS_ORIGINS: "[]"
       TZ: Asia/Shanghai
-    command: ["sh", "-c", "python -m scripts.seed_admin && python -m scripts.migrate_prize_daily_limit"]
+    command: ["sh", "-c", "python -m scripts.seed_admin"]
     depends_on:
       mysql:
         condition: service_healthy
